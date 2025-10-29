@@ -33,10 +33,10 @@ d3.select("head")
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      overflow: hidden;
+      overflow: visible;
     }
     .chart-title {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: bold;
       text-align: center;
       margin: 0 0 2px 0;
@@ -44,10 +44,47 @@ d3.select("head")
     }
   `);
 
-const width = 480, height = 260, margin = {top: 50, right: 20, bottom: 40, left: 55};
+// Sizes and fonts
+const width = 480, height = 260, margin = {top: 60, right: 25, bottom: 55, left: 65};
 const legendFontSize = 9; // general legend font size
 const legendFontSizeSmall = 8; // smaller for donut and bar
 const axisFontSize = 12;
+
+// Reserve a safe top-right lane for all legends
+const legendTopY = margin.top - 18;            // under title, above plot
+const legendRightX = width - margin.right - 120; // adjust 120 if legend is wider
+
+// Helper: wrap long SVG text into multiple tspans
+function wrapText(textSelection, wrapWidth, lineHeight = 1.2) {
+  textSelection.each(function () {
+    const text = d3.select(this);
+    const words = text.text().split(/\s+/).reverse();
+    let word;
+    let line = [];
+    let lineNumber = 0;
+    const y = text.attr("y");
+    const x = text.attr("x");
+    let tspan = text.text(null)
+      .append("tspan")
+      .attr("x", x)
+      .attr("y", y)
+      .attr("dy", "0em");
+    while ((word = words.pop())) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      if (tspan.node().getComputedTextLength() > wrapWidth) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan")
+          .attr("x", x)
+          .attr("y", y)
+          .attr("dy", `${++lineNumber * lineHeight}em`)
+          .text(word);
+      }
+    }
+  });
+}
 
 // 1. Scatter Plot (chart1)
 const svg1 = d3.select("#chart1")
@@ -60,10 +97,11 @@ svg1.append("text")
   .attr("x", width / 2)
   .attr("y", margin.top / 2)
   .attr("text-anchor", "middle")
-  .attr("font-size", "15px")
+  .attr("font-size", "14px")
   .attr("font-weight", "bold")
   .attr("class", "chart-title")
-  .text("Scatter plot: Energy consumption vs star rating");
+  .text("Scatter plot: Energy consumption vs star rating")
+  .call(wrapText, width - margin.left - margin.right);
 
 d3.csv("/T05/Ex5_TV_energy.csv", d3.autoType).then(data => {
   const x = d3.scaleLinear()
@@ -113,9 +151,9 @@ d3.csv("/T05/Ex5_TV_energy.csv", d3.autoType).then(data => {
     .attr("fill", "steelblue")
     .attr("opacity", 0.7);
 
-  // Legend below plot, left-aligned
+  // Move legend to top-right under the title
   const legend = svg1.append("g")
-    .attr("transform", `translate(${margin.left},${height - margin.bottom + 28})`);
+    .attr("transform", `translate(${legendRightX},${legendTopY + 10})`);
   legend.append("circle")
     .attr("cx", 0)
     .attr("cy", 0)
@@ -140,14 +178,15 @@ svg2.append("text")
   .attr("x", width / 2)
   .attr("y", margin.top / 2)
   .attr("text-anchor", "middle")
-  .attr("font-size", "15px")
+  .attr("font-size", "14px")
   .attr("font-weight", "bold")
   .attr("class", "chart-title")
-  .text("Donut: Energy consumption for different screen technologies across all TVs");
+  .text("Donut: Energy consumption for different screen technologies across all TVs")
+  .call(wrapText, width - margin.left - margin.right);
 
-const donutRadius = Math.min(width, height) / 2 - 50;
+const donutRadius = Math.min(width, height) / 2 - 60; // slightly smaller to keep labels in bounds
 const donutGroup = svg2.append("g")
-  .attr("transform", `translate(${width / 2},${height / 2 + 10})`);
+  .attr("transform", `translate(${width / 2 - 12},${height / 2})`); // nudge left
 
 d3.csv("/T05/Ex5_TV_energy_Allsizes_byScreenType.csv", d3.autoType).then(data => {
   const color = d3.scaleOrdinal()
@@ -169,19 +208,55 @@ d3.csv("/T05/Ex5_TV_energy_Allsizes_byScreenType.csv", d3.autoType).then(data =>
     .attr('stroke', '#fff')
     .attr('stroke-width', 2);
 
-  // Labels
-  donutGroup.selectAll('text')
-    .data(pie(data))
-    .join('text')
-    .attr('transform', d => `translate(${arc.centroid(d)})`)
-    .attr('text-anchor', 'middle')
-    .attr('dy', '0.35em')
-    .attr("font-size", legendFontSize)
+  // Replace inner labels with outside labels + leader lines
+  const outerArc = d3.arc()
+    .innerRadius(donutRadius * 0.95)
+    .outerRadius(donutRadius * 1.15);
+
+  const pieData = pie(data);
+  function midAngle(d) {
+    return d.startAngle + (d.endAngle - d.startAngle) / 2;
+  }
+
+  // Bounds for clamping label X within the SVG viewport
+  const labelPad = 4;
+  const clampRight = (width / 2) - margin.right - labelPad;
+  const clampLeft = -(width / 2 - margin.left - labelPad);
+
+  donutGroup.selectAll("polyline")
+    .data(pieData)
+    .join("polyline")
+    .attr("points", d => {
+      const p0 = arc.centroid(d);
+      const p1 = outerArc.centroid(d);
+      const p2 = outerArc.centroid(d);
+      p2[0] = donutRadius * 1.30 * (midAngle(d) < Math.PI ? 1 : -1);
+      // clamp to viewport
+      p2[0] = Math.max(Math.min(p2[0], clampRight), clampLeft);
+      return [p0, p1, p2];
+    })
+    .attr("fill", "none")
+    .attr("stroke", "#555")
+    .attr("stroke-width", 1);
+
+  donutGroup.selectAll("text.label")
+    .data(pieData)
+    .join("text")
+    .attr("class", "label")
+    .attr("transform", d => {
+      const pos = outerArc.centroid(d);
+      pos[0] = donutRadius * 1.33 * (midAngle(d) < Math.PI ? 1 : -1);
+      // clamp to viewport
+      pos[0] = Math.max(Math.min(pos[0], clampRight), clampLeft);
+      return `translate(${pos})`;
+    })
+    .attr("text-anchor", d => (midAngle(d) < Math.PI ? "start" : "end"))
+    .attr("font-size", legendFontSizeSmall)
     .text(d => d.data.Screen_Tech);
 
-  // Legend below plot, left-aligned
+  // Legend moved to top-right inside chart
   const legend = svg2.append("g")
-    .attr("transform", `translate(${margin.left},${height - margin.bottom + 28})`);
+    .attr("transform", `translate(${width - margin.right - 90},${legendTopY})`);
   data.forEach((d, i) => {
     legend.append("rect")
       .attr("x", 0)
@@ -192,7 +267,7 @@ d3.csv("/T05/Ex5_TV_energy_Allsizes_byScreenType.csv", d3.autoType).then(data =>
     legend.append("text")
       .attr("x", 14)
       .attr("y", i * 14 + 8)
-      .attr("font-size", legendFontSizeSmall) // smaller font
+      .attr("font-size", legendFontSizeSmall)
       .attr("text-anchor", "start")
       .text(d.Screen_Tech);
   });
@@ -205,33 +280,48 @@ const svg3 = d3.select("#chart3")
   .attr("height", "100%")
   .attr("viewBox", `0 0 ${width} ${height}`);
 
-svg3.append("text")
+const title3 = svg3.append("text")
   .attr("x", width / 2)
   .attr("y", margin.top / 2)
   .attr("text-anchor", "middle")
-  .attr("font-size", "15px")
+  .attr("font-size", "14px")
   .attr("font-weight", "bold")
   .attr("class", "chart-title")
-  .text("Bar: Energy consumption for different screen technologies for 55inch TVs");
+  .text("Bar: Energy consumption for different screen technologies for 55inch TVs")
+  .call(wrapText, width - margin.left - margin.right);
 
 d3.csv("/T05/Ex5_TV_energy_55inchtv_byScreenType.csv", d3.autoType).then(data => {
+  // Compute legend position under the title
+  const legendItemH = 14;
+  const titleBox = title3.node().getBBox();
+  const legendRightX = width - margin.right - 120; // move left by increasing 120 if needed
+  const legendTopY = titleBox.y + titleBox.height + 6;
+
+  // Local margin for bar chart: push plot below legend
+  const marginBar = {
+    top: Math.max(margin.top, legendTopY + (data.length * legendItemH) + 8),
+    right: margin.right,
+    bottom: margin.bottom,
+    left: margin.left
+  };
+
   const x = d3.scaleBand()
     .domain(data.map(d => d.Screen_Tech))
-    .range([margin.left, width - margin.right])
+    .range([marginBar.left, width - marginBar.right - 20])  // keep last tick inside
     .padding(0.3);
 
   const y = d3.scaleLinear()
     .domain([0, d3.max(data, d => d['Mean(Labelled energy consumption (kWh/year))'])]).nice()
-    .range([height - margin.bottom, margin.top]);
+    .range([height - marginBar.bottom, marginBar.top]);
 
   svg3.append("g")
-    .attr("transform", `translate(0,${height - margin.bottom})`)
+    .attr("transform", `translate(0,${height - marginBar.bottom})`)
     .call(d3.axisBottom(x))
     .selectAll("text")
     .attr("font-size", axisFontSize);
 
   svg3.append("g")
-    .attr("transform", `translate(${margin.left},0)`)
+    .attr("transform", `translate(${marginBar.left},0)`)
     .call(d3.axisLeft(y))
     .selectAll("text")
     .attr("font-size", axisFontSize);
@@ -266,20 +356,21 @@ d3.csv("/T05/Ex5_TV_energy_55inchtv_byScreenType.csv", d3.autoType).then(data =>
     .attr("height", d => y(0) - y(d['Mean(Labelled energy consumption (kWh/year))']))
     .attr("fill", d => color(d.Screen_Tech));
 
-  // Legend below plot, left-aligned
-  const legend = svg3.append("g")
-    .attr("transform", `translate(${margin.left},${height - margin.bottom + 28})`);
+  // Legend: fixed at top-right below title
+  const legend = svg3.append("g").attr("class", "legend")
+    .attr("transform", `translate(${legendRightX},${legendTopY})`);
+
   data.forEach((d, i) => {
     legend.append("rect")
       .attr("x", 0)
-      .attr("y", i * 14)
+      .attr("y", i * legendItemH)
       .attr("width", 10)
       .attr("height", 10)
       .attr("fill", color(d.Screen_Tech));
     legend.append("text")
       .attr("x", 14)
-      .attr("y", i * 14 + 8)
-      .attr("font-size", legendFontSizeSmall) // smaller font
+      .attr("y", i * legendItemH + 8)
+      .attr("font-size", legendFontSizeSmall)
       .attr("text-anchor", "start")
       .text(d.Screen_Tech);
   });
@@ -296,10 +387,11 @@ svg4.append("text")
   .attr("x", width / 2)
   .attr("y", margin.top / 2)
   .attr("text-anchor", "middle")
-  .attr("font-size", "15px")
+  .attr("font-size", "14px")
   .attr("font-weight", "bold")
   .attr("class", "chart-title")
-  .text("Line: Are spot Power Prices (Average, 1998-2024)");
+  .text("Line: Are spot Power Prices (Average, 1998-2024)")
+  .call(wrapText, width - margin.left - margin.right);
 
 d3.csv("/T05/Ex5_ARE_Spot_Prices.csv", d3.autoType).then(data => {
   const avgKey = "Average Price (notTas-Snowy)";
@@ -357,8 +449,9 @@ d3.csv("/T05/Ex5_ARE_Spot_Prices.csv", d3.autoType).then(data => {
     .attr("d", line);
 
   // Legend below plot, left-aligned
+  // Scatter legend: move to top-left under title
   const legend = svg4.append("g")
-    .attr("transform", `translate(${margin.left},${height - margin.bottom + 28})`);
+    .attr("transform", `translate(${legendRightX},${legendTopY})`);
   legend.append("rect")
     .attr("x", 0)
     .attr("y", 0)

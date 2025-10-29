@@ -1,11 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>TV Energy Dashboard</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <meta charset="utf-8" />
+  <title>Charts Dashboard</title>
+  <!-- D3 runtime -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <!-- Four charts only -->
+  <script type="module" src="chart-scatter.js"></script>
+  <script type="module" src="chart-donut.js"></script>
+  <script type="module" src="chart-bar.js"></script>
+  <script type="module" src="chart-line.js"></script>
+  <style>
+    body {
+      margin: 0;
+    }
+    /* Default: 2 columns, fills screen height */
+    .grid-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 20px;
+      width: 98vw;
+      max-width: 1300px;
+      margin: 20px auto;
+      height: calc(100vh - 40px); /* fill screen without scroll on wide layouts */
+    }
+    .chart-box {
+      background: #fafafa;
+      border: 1px solid #ccc;
+      padding: 0;
+      width: 100%;
+      height: 100%; /* stretch to the grid cell */
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow: visible;
+    }
+    .chart-title {
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      margin: 0 0 2px 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    /* Responsive: switch to one column when the window is narrow */
+    @media (max-width: 980px) {
+      .grid-container {
+        grid-template-columns: 1fr;  /* one chart per row */
+        grid-template-rows: auto;
+        height: auto;                /* allow stacking vertically */
+      }
+      .chart-box {
+        height: 320px;               /* reasonable height per chart on narrow screens */
+      }
+    }
+  </style>
 </head>
 <body>
-  <script src="main.js"></script>
+  <div class="grid-container">
+    <div class="chart-box" id="chart1"></div>
+    <div class="chart-box" id="chart2"></div>
+    <div class="chart-box" id="chart3"></div>
+    <div class="chart-box" id="chart4"></div>
+  </div>
 </body>
 </html>
